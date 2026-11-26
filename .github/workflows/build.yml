@@ -1,0 +1,220 @@
+name: Build template.apk
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Loyihani yaratish
+        run: |
+          set -e
+          mkdir -p proj && cd proj
+          cat > settings.gradle <<'EOF_0'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "Template"
+          include ':app'
+          EOF_0
+          cat > build.gradle <<'EOF_1'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF_1
+          cat > gradle.properties <<'EOF_2'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=false
+          EOF_2
+          mkdir -p app
+          cat > app/build.gradle <<'EOF_3'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.template.webapp'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId 'com.template.webapp'
+                  minSdk 21
+                  // 29: bot zipalign qilmaydi, 30+ da resources.arsc alignment talab qilinadi
+                  targetSdk 29
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+
+              lint {
+                  checkReleaseBuilds false
+                  abortOnError false
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+          }
+          EOF_3
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'EOF_4'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="APPNAMEPLACEHOLDER"
+                  android:usesCleartextTraffic="true"
+                  android:hardwareAccelerated="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+                  <activity
+                      android:name="com.template.webapp.MainActivity"
+                      android:label="APPNAMEPLACEHOLDER"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF_4
+          mkdir -p app/src/main/java/com/template/webapp
+          cat > app/src/main/java/com/template/webapp/MainActivity.java <<'EOF_5'
+          package com.template.webapp;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  web = new WebView(this);
+                  setContentView(web);
+
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setAllowFileAccess(true);
+                  s.setAllowContentAccess(true);
+                  s.setAllowFileAccessFromFileURLs(true);
+                  s.setAllowUniversalAccessFromFileURLs(true);
+                  s.setMediaPlaybackRequiresUserGesture(false);
+                  s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+                  web.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                          if (url.startsWith("tel:") || url.startsWith("mailto:")
+                                  || url.startsWith("sms:") || url.startsWith("geo:")) {
+                              try {
+                                  startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                              } catch (Exception ignored) { }
+                              return true;
+                          }
+                          return false;
+                      }
+                  });
+                  web.setWebChromeClient(new WebChromeClient());
+                  web.loadUrl("file:///android_asset/index.html");
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (web != null && web.canGoBack()) {
+                      web.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+
+              @Override
+              protected void onDestroy() {
+                  if (web != null) {
+                      web.destroy();
+                  }
+                  super.onDestroy();
+              }
+          }
+          EOF_5
+          mkdir -p app/src/main/assets
+          cat > app/src/main/assets/index.html <<'EOF_6'
+          <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><h3>Template</h3></body></html>
+          EOF_6
+          python3 - <<'EOF_PY'
+          import zlib, struct, os
+          def png(sz):
+              rows = []
+              r = sz // 5
+              for y in range(sz):
+                  row = bytearray([0])
+                  for x in range(sz):
+                      cx = min(max(x, r), sz - 1 - r)
+                      cy = min(max(y, r), sz - 1 - r)
+                      inside = (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+                      c = sz / 2
+                      dot = (x - c) ** 2 + (y - c) ** 2 <= (sz * 0.25) ** 2
+                      if not inside:
+                          row += bytes([0, 0, 0, 0])
+                      elif dot:
+                          row += bytes([255, 255, 255, 255])
+                      else:
+                          row += bytes([60, 90, 200, 255])
+                  rows.append(bytes(row))
+              raw = b"".join(rows)
+              def chunk(t, d):
+                  c = struct.pack(">I", len(d)) + t + d
+                  return c + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+              return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", sz, sz, 8, 6, 0, 0, 0))
+                      + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+          for d, sz in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
+              p = "app/src/main/res/mipmap-" + d
+              os.makedirs(p, exist_ok=True)
+              open(p + "/ic_launcher.png", "wb").write(png(sz))
+          EOF_PY
+      - name: APK yasash
+        working-directory: proj
+        run: gradle assembleRelease --no-daemon
+      - name: template.apk
+        run: cp proj/app/build/outputs/apk/release/app-release-unsigned.apk template.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: template-apk
+          path: template.apk
